@@ -1,6 +1,11 @@
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import React, { forwardRef, useState } from "react";
+import React, {
+  forwardRef,
+  useImperativeHandle,
+  useRef,
+  useState,
+} from "react";
 import {
   Platform,
   Pressable,
@@ -13,6 +18,13 @@ import {
 import { useColors } from "@/hooks/useColors";
 import { getModelById } from "@/lib/models";
 
+export interface ChatInputHandle {
+  focus: () => void;
+  blur: () => void;
+  setText: (text: string) => void;
+  clear: () => void;
+}
+
 interface Props {
   modelId: string;
   onPickModel: () => void;
@@ -22,14 +34,30 @@ interface Props {
   disabled?: boolean;
 }
 
-const ChatInput = forwardRef<TextInput, Props>(function ChatInput(
+const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput(
   { modelId, onPickModel, onSend, onStop, isStreaming, disabled },
   ref,
 ) {
   const colors = useColors();
+  const inputRef = useRef<TextInput>(null);
   const [value, setValue] = useState("");
   const trimmed = value.trim();
   const canSend = trimmed.length > 0 && !disabled && !isStreaming;
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      focus: () => inputRef.current?.focus(),
+      blur: () => inputRef.current?.blur(),
+      setText: (text: string) => {
+        setValue(text);
+        // Defer focus so the new value is mounted before focusing
+        setTimeout(() => inputRef.current?.focus(), 50);
+      },
+      clear: () => setValue(""),
+    }),
+    [],
+  );
 
   const handleSend = () => {
     if (!canSend) return;
@@ -54,7 +82,7 @@ const ChatInput = forwardRef<TextInput, Props>(function ChatInput(
       ]}
     >
       <TextInput
-        ref={ref}
+        ref={inputRef}
         value={value}
         onChangeText={setValue}
         placeholder="Message GroqChat…"

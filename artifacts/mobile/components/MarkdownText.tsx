@@ -2,6 +2,7 @@ import React, { useMemo } from "react";
 import { Platform, StyleSheet } from "react-native";
 import Markdown, { type RenderRules } from "react-native-markdown-display";
 
+import CodeBlock from "@/components/CodeBlock";
 import { useColors } from "@/hooks/useColors";
 
 const monoFont = Platform.select({
@@ -199,7 +200,24 @@ export default function MarkdownText({ content }: Props) {
   );
 
   const rules = useMemo<RenderRules>(
-    () => ({}),
+    () => ({
+      fence: (node) => {
+        const content = typeof node.content === "string" ? node.content : "";
+        const language =
+          typeof node.sourceInfo === "string" ? node.sourceInfo : undefined;
+        return (
+          <CodeBlock
+            key={node.key}
+            code={content}
+            language={language}
+          />
+        );
+      },
+      code_block: (node) => {
+        const content = typeof node.content === "string" ? node.content : "";
+        return <CodeBlock key={node.key} code={content} />;
+      },
+    }),
     [],
   );
 

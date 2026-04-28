@@ -84,9 +84,7 @@ export default function HistoryScreen() {
     ]);
   };
 
-  const nonEmpty = sorted.filter(
-    (c) => c.id === currentConversationId || c.messages.length > 0,
-  );
+  const nonEmpty = sorted.filter((c) => c.messages.length > 0);
 
   return (
     <View

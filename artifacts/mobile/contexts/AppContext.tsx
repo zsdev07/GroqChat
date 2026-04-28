@@ -65,6 +65,7 @@ interface AppContextValue {
     updater: (msg: ChatMessage) => ChatMessage,
   ) => void;
   removeMessage: (conversationId: string, messageId: string) => void;
+  truncateMessagesAt: (conversationId: string, fromIndex: number) => void;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
@@ -288,6 +289,23 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     [],
   );
 
+  const truncateMessagesAt = useCallback(
+    (conversationId: string, fromIndex: number) => {
+      setConversations((prev) =>
+        prev.map((c) =>
+          c.id === conversationId
+            ? {
+                ...c,
+                messages: c.messages.slice(0, Math.max(0, fromIndex)),
+                updatedAt: Date.now(),
+              }
+            : c,
+        ),
+      );
+    },
+    [],
+  );
+
   const currentConversation = useMemo(
     () => conversations.find((c) => c.id === currentConversationId) ?? null,
     [conversations, currentConversationId],
@@ -313,6 +331,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       appendMessage,
       updateLastAssistantMessage,
       removeMessage,
+      truncateMessagesAt,
     }),
     [
       ready,
@@ -333,6 +352,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       appendMessage,
       updateLastAssistantMessage,
       removeMessage,
+      truncateMessagesAt,
     ],
   );
 

@@ -1,5 +1,4 @@
 import { Feather } from "@expo/vector-icons";
-import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
 import React, {
@@ -10,20 +9,18 @@ import React, {
   useState,
 } from "react";
 import {
-  Alert,
   FlatList,
   Platform,
   Pressable,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import ChatHeader from "@/components/ChatHeader";
-import ChatInput from "@/components/ChatInput";
+import ChatInput, { type ChatInputHandle } from "@/components/ChatInput";
 import EmptyChatState from "@/components/EmptyChatState";
 import MessageRow from "@/components/ChatMessage";
 import {
@@ -39,7 +36,7 @@ export default function ChatScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const inputRef = useRef<TextInput>(null);
+  const inputRef = useRef<ChatInputHandle>(null);
   const abortRef = useRef<AbortController | null>(null);
 
   const {
@@ -48,10 +45,10 @@ export default function ChatScreen() {
     defaultModelId,
     currentConversation,
     newConversation,
-    setConversationModel,
     appendMessage,
     updateLastAssistantMessage,
     removeMessage,
+    truncateMessagesAt,
   } = useApp();
 
   const [isStreaming, setIsStreaming] = useState(false);
@@ -71,6 +68,97 @@ export default function ChatScreen() {
     [currentConversation?.messages],
   );
 
+  // Index of last user message (used for "Edit" eligibility)
+  const lastUserIndex = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i];
+      if (m && m.role === "user") return i;
+    }
+    return -1;
+  }, [messages]);
+
+  const runCompletion = useCallback(
+    async (
+      convId: string,
+      historyForApi: ChatMessage[],
+      assistantPlaceholder: ChatMessage,
+    ) => {
+      if (!apiKey) {
+        router.push("/settings");
+        return;
+      }
+
+      setErrorBanner(null);
+      appendMessage(convId, assistantPlaceholder);
+      setIsStreaming(true);
+
+      const controller = new AbortController();
+      abortRef.current = controller;
+
+      let accumulated = "";
+      try {
+        await streamGroq({
+          apiKey,
+          model: assistantPlaceholder.modelId ?? modelId,
+          messages: historyForApi,
+          signal: controller.signal,
+          onChunk: (chunk) => {
+            accumulated += chunk;
+            updateLastAssistantMessage(convId, (msg) => ({
+              ...msg,
+              content: accumulated,
+            }));
+          },
+        });
+
+        if (accumulated.length === 0) {
+          updateLastAssistantMessage(convId, (msg) => ({
+            ...msg,
+            content: "(No response from model)",
+          }));
+        }
+
+        if (Platform.OS !== "web") {
+          void Haptics.notificationAsync(
+            Haptics.NotificationFeedbackType.Success,
+          );
+        }
+      } catch (err) {
+        if ((err as Error).name === "AbortError") {
+          if (accumulated.length === 0) {
+            removeMessage(convId, assistantPlaceholder.id);
+          } else {
+            updateLastAssistantMessage(convId, (msg) => ({
+              ...msg,
+              content: `${msg.content}\n\n_(stopped)_`,
+            }));
+          }
+        } else {
+          const message =
+            err instanceof Error ? err.message : "Something went wrong";
+          removeMessage(convId, assistantPlaceholder.id);
+          setErrorBanner(message);
+          if (Platform.OS !== "web") {
+            void Haptics.notificationAsync(
+              Haptics.NotificationFeedbackType.Error,
+            );
+          }
+        }
+      } finally {
+        setIsStreaming(false);
+        abortRef.current = null;
+      }
+    },
+    [
+      apiKey,
+      appendMessage,
+      modelId,
+      removeMessage,
+      router,
+      updateLastAssistantMessage,
+    ],
+  );
+
   const handleSend = useCallback(
     async (text: string) => {
       if (!conversationId) return;
@@ -79,7 +167,6 @@ export default function ChatScreen() {
         return;
       }
 
-      setErrorBanner(null);
       const userMessage: ChatMessage = {
         id: generateId("msg"),
         role: "user",
@@ -95,65 +182,8 @@ export default function ChatScreen() {
       };
 
       appendMessage(conversationId, userMessage);
-      appendMessage(conversationId, assistantMessage);
-      setIsStreaming(true);
-
-      const controller = new AbortController();
-      abortRef.current = controller;
-
       const history: ChatMessage[] = [...messages, userMessage];
-
-      let accumulated = "";
-      try {
-        await streamGroq({
-          apiKey,
-          model: modelId,
-          messages: history,
-          signal: controller.signal,
-          onChunk: (chunk) => {
-            accumulated += chunk;
-            updateLastAssistantMessage(conversationId, (msg) => ({
-              ...msg,
-              content: accumulated,
-            }));
-          },
-        });
-
-        if (accumulated.length === 0) {
-          updateLastAssistantMessage(conversationId, (msg) => ({
-            ...msg,
-            content: "(No response from model)",
-          }));
-        }
-
-        if (Platform.OS !== "web") {
-          void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        }
-      } catch (err) {
-        if ((err as Error).name === "AbortError") {
-          if (accumulated.length === 0) {
-            removeMessage(conversationId, assistantMessage.id);
-          } else {
-            updateLastAssistantMessage(conversationId, (msg) => ({
-              ...msg,
-              content: `${msg.content}\n\n_(stopped)_`,
-            }));
-          }
-        } else {
-          const message =
-            err instanceof Error ? err.message : "Something went wrong";
-          removeMessage(conversationId, assistantMessage.id);
-          setErrorBanner(message);
-          if (Platform.OS !== "web") {
-            void Haptics.notificationAsync(
-              Haptics.NotificationFeedbackType.Error,
-            );
-          }
-        }
-      } finally {
-        setIsStreaming(false);
-        abortRef.current = null;
-      }
+      await runCompletion(conversationId, history, assistantMessage);
     },
     [
       conversationId,
@@ -161,9 +191,60 @@ export default function ChatScreen() {
       modelId,
       messages,
       appendMessage,
-      updateLastAssistantMessage,
-      removeMessage,
       router,
+      runCompletion,
+    ],
+  );
+
+  const handleEditUserMessage = useCallback(
+    (msg: ChatMessage) => {
+      if (!conversationId) return;
+      if (isStreaming) {
+        abortRef.current?.abort();
+      }
+      const idx = messages.findIndex((m) => m.id === msg.id);
+      if (idx === -1) return;
+      // Drop this user message and everything after it, then re-fill the input
+      truncateMessagesAt(conversationId, idx);
+      inputRef.current?.setText(msg.content);
+    },
+    [conversationId, isStreaming, messages, truncateMessagesAt],
+  );
+
+  const handleRetryAssistant = useCallback(
+    async (msg: ChatMessage) => {
+      if (!conversationId) return;
+      if (isStreaming) return;
+
+      const idx = messages.findIndex((m) => m.id === msg.id);
+      if (idx === -1) return;
+
+      // The history we'll resend = everything before this assistant message
+      const historyForApi = messages.slice(0, idx);
+      // Find the most recent user message to retry against
+      const hasUserBefore = historyForApi.some((m) => m.role === "user");
+      if (!hasUserBefore) return;
+
+      // Drop this assistant message (and anything after, just in case)
+      truncateMessagesAt(conversationId, idx);
+
+      const assistantMessage: ChatMessage = {
+        id: generateId("msg"),
+        role: "assistant",
+        content: "",
+        modelId,
+        createdAt: Date.now(),
+      };
+
+      await runCompletion(conversationId, historyForApi, assistantMessage);
+    },
+    [
+      conversationId,
+      isStreaming,
+      messages,
+      modelId,
+      runCompletion,
+      truncateMessagesAt,
     ],
   );
 
@@ -188,26 +269,11 @@ export default function ChatScreen() {
       abortRef.current?.abort();
     }
     newConversation(defaultModelId);
+    inputRef.current?.clear();
     if (Platform.OS !== "web") {
       void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
   }, [defaultModelId, isStreaming, newConversation]);
-
-  const handleLongPressMessage = useCallback((message: ChatMessage) => {
-    if (Platform.OS === "web") {
-      void Clipboard.setStringAsync(message.content);
-      return;
-    }
-    Alert.alert("Message", undefined, [
-      {
-        text: "Copy",
-        onPress: () => {
-          void Clipboard.setStringAsync(message.content);
-        },
-      },
-      { text: "Cancel", style: "cancel" },
-    ]);
-  }, []);
 
   const reversed = useMemo(() => [...messages].reverse(), [messages]);
 
@@ -270,14 +336,24 @@ export default function ChatScreen() {
             keyboardShouldPersistTaps="handled"
             contentContainerStyle={styles.listContent}
             renderItem={({ item, index }) => {
+              const realIndex = messages.length - 1 - index;
               const isLast = index === 0;
               const showStreaming =
                 isStreaming && isLast && item.role === "assistant";
+              const canEdit =
+                item.role === "user" && realIndex === lastUserIndex;
+              const canRetry =
+                item.role === "assistant" &&
+                !showStreaming &&
+                item.content.length > 0;
               return (
                 <MessageRow
                   message={item}
                   isStreaming={showStreaming}
-                  onLongPress={handleLongPressMessage}
+                  canEdit={canEdit}
+                  canRetry={canRetry}
+                  onEdit={handleEditUserMessage}
+                  onRetry={handleRetryAssistant}
                 />
               );
             }}
