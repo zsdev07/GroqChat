@@ -7,6 +7,7 @@ export const STORAGE_KEYS = {
   conversations: "groqchat:conversations",
   currentConversationId: "groqchat:currentConversationId",
   defaultModel: "groqchat:defaultModel",
+  tokenStatsEnabled: "groqchat:tokenStatsEnabled",
 } as const;
 
 export async function loadString(key: string): Promise<string | null> {

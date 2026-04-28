@@ -21,12 +21,20 @@ import {
 
 export type MessageRole = "user" | "assistant" | "system";
 
+export interface MessageStats {
+  promptTokens?: number;
+  completionTokens?: number;
+  totalTokens?: number;
+  durationMs?: number;
+}
+
 export interface ChatMessage {
   id: string;
   role: MessageRole;
   content: string;
   modelId?: string;
   createdAt: number;
+  stats?: MessageStats;
 }
 
 export interface Conversation {
@@ -47,6 +55,9 @@ interface AppContextValue {
 
   defaultModelId: string;
   setDefaultModelId: (id: string) => Promise<void>;
+
+  tokenStatsEnabled: boolean;
+  setTokenStatsEnabled: (enabled: boolean) => Promise<void>;
 
   conversations: Conversation[];
   currentConversationId: string | null;
@@ -81,6 +92,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [apiKey, setApiKeyState] = useState<string | null>(null);
   const [defaultModelId, setDefaultModelIdState] =
     useState<string>(DEFAULT_MODEL_ID);
+  const [tokenStatsEnabled, setTokenStatsEnabledState] = useState(false);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [currentConversationId, setCurrentConversationId] = useState<
     string | null
@@ -93,13 +105,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let mounted = true;
     (async () => {
-      const [storedKey, storedModel, storedConvos, storedCurrent] =
-        await Promise.all([
-          loadString(STORAGE_KEYS.apiKey),
-          loadString(STORAGE_KEYS.defaultModel),
-          loadConversations(),
-          loadString(STORAGE_KEYS.currentConversationId),
-        ]);
+      const [
+        storedKey,
+        storedModel,
+        storedConvos,
+        storedCurrent,
+        storedTokenStats,
+      ] = await Promise.all([
+        loadString(STORAGE_KEYS.apiKey),
+        loadString(STORAGE_KEYS.defaultModel),
+        loadConversations(),
+        loadString(STORAGE_KEYS.currentConversationId),
+        loadString(STORAGE_KEYS.tokenStatsEnabled),
+      ]);
 
       if (!mounted) return;
 
@@ -108,6 +126,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const safeDefault =
         storedModel && validIds.has(storedModel) ? storedModel : DEFAULT_MODEL_ID;
       setDefaultModelIdState(safeDefault);
+      setTokenStatsEnabledState(storedTokenStats === "1");
 
       // Migrate any conversations using deprecated/removed models
       const migrated = storedConvos.map((c) =>
@@ -151,6 +170,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const clearApiKey = useCallback(async () => {
     setApiKeyState(null);
     await removeKey(STORAGE_KEYS.apiKey);
+  }, []);
+
+  const setTokenStatsEnabled = useCallback(async (enabled: boolean) => {
+    setTokenStatsEnabledState(enabled);
+    await saveString(STORAGE_KEYS.tokenStatsEnabled, enabled ? "1" : "0");
   }, []);
 
   const setDefaultModelId = useCallback(
@@ -319,6 +343,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       clearApiKey,
       defaultModelId,
       setDefaultModelId,
+      tokenStatsEnabled,
+      setTokenStatsEnabled,
       conversations,
       currentConversationId,
       currentConversation,
@@ -340,6 +366,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       clearApiKey,
       defaultModelId,
       setDefaultModelId,
+      tokenStatsEnabled,
+      setTokenStatsEnabled,
       conversations,
       currentConversationId,
       currentConversation,

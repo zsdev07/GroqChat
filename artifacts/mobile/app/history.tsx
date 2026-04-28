@@ -1,8 +1,7 @@
 import { Feather } from "@expo/vector-icons";
 import { router } from "expo-router";
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import {
-  Alert,
   FlatList,
   Pressable,
   StyleSheet,
@@ -11,6 +10,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import ConfirmModal from "@/components/ConfirmModal";
 import { useApp, type Conversation } from "@/contexts/AppContext";
 import { useColors } from "@/hooks/useColors";
 import { getModelById } from "@/lib/models";
@@ -40,6 +40,9 @@ export default function HistoryScreen() {
     clearAllConversations,
   } = useApp();
 
+  const [pendingDelete, setPendingDelete] = useState<Conversation | null>(null);
+  const [pendingClearAll, setPendingClearAll] = useState(false);
+
   const sorted = useMemo(
     () => [...conversations].sort((a, b) => b.updatedAt - a.updatedAt),
     [conversations],
@@ -53,35 +56,6 @@ export default function HistoryScreen() {
   const handleNew = () => {
     newConversation(defaultModelId);
     router.back();
-  };
-
-  const handleDelete = (conv: Conversation) => {
-    Alert.alert(
-      "Delete chat",
-      `Delete "${conv.title}"? This cannot be undone.`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: () => deleteConversation(conv.id),
-        },
-      ],
-    );
-  };
-
-  const handleClearAll = () => {
-    Alert.alert("Clear all chats?", "This permanently deletes every chat.", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Clear all",
-        style: "destructive",
-        onPress: () => {
-          clearAllConversations();
-          router.back();
-        },
-      },
-    ]);
   };
 
   const nonEmpty = sorted.filter((c) => c.messages.length > 0);
@@ -173,21 +147,25 @@ export default function HistoryScreen() {
               ? lastMsg.content.replace(/\s+/g, " ").trim()
               : "No messages yet";
             return (
-              <Pressable
-                onPress={() => handleSelect(item.id)}
-                onLongPress={() => handleDelete(item)}
-                style={({ pressed }) => [
+              <View
+                style={[
                   styles.row,
                   {
                     backgroundColor: isActive
                       ? colors.accent
-                      : pressed
-                        ? colors.secondary
-                        : "transparent",
+                      : "transparent",
                   },
                 ]}
               >
-                <View style={{ flex: 1 }}>
+                <Pressable
+                  onPress={() => handleSelect(item.id)}
+                  style={({ pressed }) => [
+                    styles.rowMain,
+                    {
+                      opacity: pressed ? 0.7 : 1,
+                    },
+                  ]}
+                >
                   <View style={styles.titleRow}>
                     <Text
                       numberOfLines={1}
@@ -241,25 +219,32 @@ export default function HistoryScreen() {
                       {item.messages.length === 1 ? "" : "s"}
                     </Text>
                   </View>
-                </View>
+                </Pressable>
                 <Pressable
-                  onPress={() => handleDelete(item)}
-                  hitSlop={10}
-                  style={styles.deleteBtn}
+                  onPress={() => setPendingDelete(item)}
+                  hitSlop={12}
+                  style={({ pressed }) => [
+                    styles.deleteBtn,
+                    {
+                      backgroundColor: pressed
+                        ? `${colors.destructive}22`
+                        : "transparent",
+                    },
+                  ]}
                 >
                   <Feather
                     name="trash-2"
-                    size={16}
-                    color={colors.mutedForeground}
+                    size={18}
+                    color={colors.destructive}
                   />
                 </Pressable>
-              </Pressable>
+              </View>
             );
           }}
           ListFooterComponent={
             nonEmpty.length > 1 ? (
               <Pressable
-                onPress={handleClearAll}
+                onPress={() => setPendingClearAll(true)}
                 style={({ pressed }) => [
                   styles.clearBtn,
                   { opacity: pressed ? 0.7 : 1 },
@@ -280,6 +265,39 @@ export default function HistoryScreen() {
           }
         />
       )}
+
+      <ConfirmModal
+        visible={!!pendingDelete}
+        title="Delete chat?"
+        message={
+          pendingDelete
+            ? `"${pendingDelete.title}" will be permanently removed from this device.`
+            : undefined
+        }
+        confirmLabel="Delete"
+        destructive
+        onConfirm={() => {
+          if (pendingDelete) {
+            deleteConversation(pendingDelete.id);
+          }
+          setPendingDelete(null);
+        }}
+        onCancel={() => setPendingDelete(null)}
+      />
+
+      <ConfirmModal
+        visible={pendingClearAll}
+        title="Clear all chats?"
+        message="Every conversation on this device will be permanently deleted."
+        confirmLabel="Clear all"
+        destructive
+        onConfirm={() => {
+          clearAllConversations();
+          setPendingClearAll(false);
+          router.back();
+        }}
+        onCancel={() => setPendingClearAll(false)}
+      />
     </View>
   );
 }
@@ -308,9 +326,12 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: "row",
     alignItems: "center",
+    paddingRight: 8,
+  },
+  rowMain: {
+    flex: 1,
     paddingHorizontal: 16,
     paddingVertical: 14,
-    gap: 8,
   },
   titleRow: {
     flexDirection: "row",
@@ -354,10 +375,11 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_400Regular",
   },
   deleteBtn: {
-    width: 36,
-    height: 36,
+    width: 40,
+    height: 40,
     alignItems: "center",
     justifyContent: "center",
+    borderRadius: 999,
   },
   sep: {
     height: StyleSheet.hairlineWidth,

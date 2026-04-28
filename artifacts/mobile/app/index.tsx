@@ -49,6 +49,7 @@ export default function ChatScreen() {
     updateLastAssistantMessage,
     removeMessage,
     truncateMessagesAt,
+    tokenStatsEnabled,
   } = useApp();
 
   const [isStreaming, setIsStreaming] = useState(false);
@@ -95,7 +96,13 @@ export default function ChatScreen() {
       const controller = new AbortController();
       abortRef.current = controller;
 
+      const startTime = Date.now();
       let accumulated = "";
+      let lastUsage: {
+        prompt_tokens?: number;
+        completion_tokens?: number;
+        total_tokens?: number;
+      } | null = null;
       try {
         await streamGroq({
           apiKey,
@@ -109,6 +116,9 @@ export default function ChatScreen() {
               content: accumulated,
             }));
           },
+          onUsage: (usage) => {
+            lastUsage = usage;
+          },
         });
 
         if (accumulated.length === 0) {
@@ -117,6 +127,17 @@ export default function ChatScreen() {
             content: "(No response from model)",
           }));
         }
+
+        const duration = Date.now() - startTime;
+        updateLastAssistantMessage(convId, (msg) => ({
+          ...msg,
+          stats: {
+            promptTokens: lastUsage?.prompt_tokens,
+            completionTokens: lastUsage?.completion_tokens,
+            totalTokens: lastUsage?.total_tokens,
+            durationMs: duration,
+          },
+        }));
 
         if (Platform.OS !== "web") {
           void Haptics.notificationAsync(
@@ -128,9 +149,16 @@ export default function ChatScreen() {
           if (accumulated.length === 0) {
             removeMessage(convId, assistantPlaceholder.id);
           } else {
+            const duration = Date.now() - startTime;
             updateLastAssistantMessage(convId, (msg) => ({
               ...msg,
               content: `${msg.content}\n\n_(stopped)_`,
+              stats: {
+                promptTokens: lastUsage?.prompt_tokens,
+                completionTokens: lastUsage?.completion_tokens,
+                totalTokens: lastUsage?.total_tokens,
+                durationMs: duration,
+              },
             }));
           }
         } else {
@@ -352,8 +380,10 @@ export default function ChatScreen() {
                   isStreaming={showStreaming}
                   canEdit={canEdit}
                   canRetry={canRetry}
+                  showStats={tokenStatsEnabled}
                   onEdit={handleEditUserMessage}
                   onRetry={handleRetryAssistant}
+                  onStopStreaming={handleStop}
                 />
               );
             }}

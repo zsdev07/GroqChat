@@ -4,17 +4,18 @@ import { Link, router } from "expo-router";
 import React, { useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   Linking,
   Platform,
   Pressable,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import ConfirmModal from "@/components/ConfirmModal";
 import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollViewCompat";
 import { useApp } from "@/contexts/AppContext";
 import { useColors } from "@/hooks/useColors";
@@ -37,12 +38,16 @@ export default function SettingsScreen() {
     defaultModelId,
     setDefaultModelId,
     clearAllConversations,
+    tokenStatsEnabled,
+    setTokenStatsEnabled,
   } = useApp();
 
   const [draftKey, setDraftKey] = useState("");
   const [editing, setEditing] = useState(!apiKey);
   const [validating, setValidating] = useState(false);
   const [validationMsg, setValidationMsg] = useState<string | null>(null);
+  const [pendingRemoveKey, setPendingRemoveKey] = useState(false);
+  const [pendingClearChats, setPendingClearChats] = useState(false);
 
   const handleSaveKey = async () => {
     const trimmed = draftKey.trim();
@@ -71,37 +76,14 @@ export default function SettingsScreen() {
     }
   };
 
-  const handleRemoveKey = () => {
-    Alert.alert(
-      "Remove API key?",
-      "You will need to add it again to keep chatting.",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Remove",
-          style: "destructive",
-          onPress: async () => {
-            await clearApiKey();
-            setEditing(true);
-          },
-        },
-      ],
-    );
-  };
+  const handleRemoveKey = () => setPendingRemoveKey(true);
+  const handleClearChats = () => setPendingClearChats(true);
 
-  const handleClearChats = () => {
-    Alert.alert(
-      "Clear all chats?",
-      "Permanently delete every conversation on this device.",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Clear",
-          style: "destructive",
-          onPress: () => clearAllConversations(),
-        },
-      ],
-    );
+  const handleToggleTokenStats = (val: boolean) => {
+    if (Platform.OS !== "web") {
+      void Haptics.selectionAsync();
+    }
+    void setTokenStatsEnabled(val);
   };
 
   return (
@@ -445,6 +427,56 @@ export default function SettingsScreen() {
 
         <View>
           <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>
+            Display
+          </Text>
+          <View
+            style={[
+              styles.card,
+              {
+                backgroundColor: colors.card,
+                borderColor: colors.border,
+                borderRadius: colors.radius,
+              },
+            ]}
+          >
+            <View style={styles.toggleRow}>
+              <View style={{ flex: 1, paddingRight: 12 }}>
+                <Text
+                  style={[styles.toggleTitle, { color: colors.foreground }]}
+                >
+                  Show token & speed stats
+                </Text>
+                <Text
+                  style={[
+                    styles.toggleBody,
+                    { color: colors.mutedForeground },
+                  ]}
+                >
+                  Display token count and response time under each reply.
+                </Text>
+              </View>
+              <Switch
+                value={tokenStatsEnabled}
+                onValueChange={handleToggleTokenStats}
+                trackColor={{
+                  false: colors.border,
+                  true: colors.primary,
+                }}
+                thumbColor={
+                  Platform.OS === "android"
+                    ? tokenStatsEnabled
+                      ? colors.primaryForeground
+                      : colors.card
+                    : undefined
+                }
+                ios_backgroundColor={colors.border}
+              />
+            </View>
+          </View>
+        </View>
+
+        <View>
+          <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>
             Data
           </Text>
           <Pressable
@@ -484,6 +516,33 @@ export default function SettingsScreen() {
           </Link>
         </View>
       </KeyboardAwareScrollViewCompat>
+
+      <ConfirmModal
+        visible={pendingRemoveKey}
+        title="Remove API key?"
+        message="You will need to add it again to keep chatting."
+        confirmLabel="Remove"
+        destructive
+        onConfirm={async () => {
+          setPendingRemoveKey(false);
+          await clearApiKey();
+          setEditing(true);
+        }}
+        onCancel={() => setPendingRemoveKey(false)}
+      />
+
+      <ConfirmModal
+        visible={pendingClearChats}
+        title="Clear all chats?"
+        message="Permanently delete every conversation on this device."
+        confirmLabel="Clear all"
+        destructive
+        onConfirm={() => {
+          clearAllConversations();
+          setPendingClearChats(false);
+        }}
+        onCancel={() => setPendingClearChats(false)}
+      />
     </View>
   );
 }
@@ -663,6 +722,20 @@ const styles = StyleSheet.create({
   dangerText: {
     fontSize: 14,
     fontFamily: "Inter_500Medium",
+  },
+  toggleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  toggleTitle: {
+    fontSize: 14,
+    fontFamily: "Inter_600SemiBold",
+  },
+  toggleBody: {
+    fontSize: 12,
+    fontFamily: "Inter_400Regular",
+    marginTop: 4,
+    lineHeight: 17,
   },
   aboutWrap: {
     alignItems: "center",

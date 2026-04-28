@@ -4,12 +4,19 @@ import type { ChatMessage } from "@/contexts/AppContext";
 
 const GROQ_ENDPOINT = "https://api.groq.com/openai/v1/chat/completions";
 
+export interface GroqUsage {
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  total_tokens?: number;
+}
+
 export interface StreamArgs {
   apiKey: string;
   model: string;
   messages: ChatMessage[];
   signal?: AbortSignal;
   onChunk: (chunk: string) => void;
+  onUsage?: (usage: GroqUsage) => void;
 }
 
 export async function streamGroq({
@@ -18,10 +25,12 @@ export async function streamGroq({
   messages,
   signal,
   onChunk,
+  onUsage,
 }: StreamArgs): Promise<void> {
   const payload = {
     model,
     stream: true,
+    stream_options: { include_usage: true },
     messages: messages
       .filter((m) => m.role !== "system" || m.content)
       .map((m) => ({ role: m.role, content: m.content })),
@@ -76,6 +85,9 @@ export async function streamGroq({
         const delta = parsed?.choices?.[0]?.delta?.content;
         if (typeof delta === "string" && delta.length > 0) {
           onChunk(delta);
+        }
+        if (parsed?.usage && onUsage) {
+          onUsage(parsed.usage as GroqUsage);
         }
       } catch {
         // ignore malformed chunks

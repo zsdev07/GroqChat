@@ -21,8 +21,37 @@ interface Props {
   isStreaming?: boolean;
   canEdit?: boolean;
   canRetry?: boolean;
+  showStats?: boolean;
   onEdit?: (message: ChatMessage) => void;
   onRetry?: (message: ChatMessage) => void;
+  onStopStreaming?: () => void;
+}
+
+function formatStats(
+  stats: NonNullable<ChatMessage["stats"]>,
+): string | null {
+  const parts: string[] = [];
+  if (typeof stats.totalTokens === "number") {
+    parts.push(`${stats.totalTokens} tok`);
+  } else if (typeof stats.completionTokens === "number") {
+    parts.push(`${stats.completionTokens} tok`);
+  }
+  if (typeof stats.durationMs === "number") {
+    const seconds = stats.durationMs / 1000;
+    if (seconds < 10) {
+      parts.push(`${seconds.toFixed(2)}s`);
+    } else {
+      parts.push(`${seconds.toFixed(1)}s`);
+    }
+    if (
+      typeof stats.completionTokens === "number" &&
+      stats.durationMs > 0
+    ) {
+      const tps = (stats.completionTokens / (stats.durationMs / 1000)).toFixed(0);
+      parts.push(`${tps} tok/s`);
+    }
+  }
+  return parts.length > 0 ? parts.join(" · ") : null;
 }
 
 function MessageRow({
@@ -30,8 +59,10 @@ function MessageRow({
   isStreaming,
   canEdit,
   canRetry,
+  showStats,
   onEdit,
   onRetry,
+  onStopStreaming,
 }: Props) {
   const colors = useColors();
   const isUser = message.role === "user";
@@ -79,6 +110,13 @@ function MessageRow({
   const handleToggleUserActions = useCallback(() => {
     setShowUserActions((s) => !s);
   }, []);
+
+  const handleAssistantTap = useCallback(() => {
+    if (isStreaming) {
+      triggerHaptic();
+      onStopStreaming?.();
+    }
+  }, [isStreaming, onStopStreaming, triggerHaptic]);
 
   const modelName = message.modelId
     ? getModelById(message.modelId).name
@@ -189,7 +227,14 @@ function MessageRow({
           </Text>
         </View>
 
-        <View style={styles.assistantBubble}>
+        <Pressable
+          onPress={handleAssistantTap}
+          disabled={!isStreaming}
+          style={({ pressed }) => [
+            styles.assistantBubble,
+            { opacity: pressed && isStreaming ? 0.7 : 1 },
+          ]}
+        >
           {message.content.length === 0 && isStreaming ? (
             <View style={styles.thinkingDots}>
               {[0, 1, 2].map((i) => (
@@ -210,7 +255,20 @@ function MessageRow({
               ) : null}
             </View>
           )}
-        </View>
+          {isStreaming ? (
+            <View
+              style={[
+                styles.stopHint,
+                { backgroundColor: colors.secondary, borderColor: colors.border },
+              ]}
+            >
+              <Feather name="square" size={10} color={colors.foreground} />
+              <Text style={[styles.stopHintText, { color: colors.foreground }]}>
+                Tap to stop
+              </Text>
+            </View>
+          ) : null}
+        </Pressable>
 
         {showActions ? (
           <View style={styles.assistantActionsRow}>
@@ -257,6 +315,20 @@ function MessageRow({
                   color={colors.mutedForeground}
                 />
               </Pressable>
+            ) : null}
+            {showStats && message.stats ? (
+              <View style={styles.statsWrap}>
+                {(() => {
+                  const text = formatStats(message.stats);
+                  return text ? (
+                    <Text
+                      style={[styles.statsText, { color: colors.mutedForeground }]}
+                    >
+                      {text}
+                    </Text>
+                  ) : null;
+                })()}
+              </View>
             ) : null}
           </View>
         ) : null}
@@ -345,6 +417,32 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     borderRadius: 6,
+  },
+  statsWrap: {
+    flex: 1,
+    alignItems: "flex-end",
+    justifyContent: "center",
+    paddingHorizontal: 6,
+  },
+  statsText: {
+    fontSize: 11,
+    fontFamily: "Inter_500Medium",
+    letterSpacing: 0.2,
+  },
+  stopHint: {
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 999,
+    borderWidth: StyleSheet.hairlineWidth,
+    marginTop: 8,
+  },
+  stopHintText: {
+    fontSize: 11,
+    fontFamily: "Inter_500Medium",
   },
   thinkingDots: {
     flexDirection: "row",
