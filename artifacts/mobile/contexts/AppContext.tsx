@@ -9,7 +9,7 @@ import React, {
 } from "react";
 
 import { generateId } from "@/lib/ids";
-import { DEFAULT_MODEL_ID, getModelById } from "@/lib/models";
+import { DEFAULT_MODEL_ID, GROQ_MODELS, getModelById } from "@/lib/models";
 import {
   STORAGE_KEYS,
   loadConversations,
@@ -103,8 +103,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (!mounted) return;
 
       setApiKeyState(storedKey);
-      if (storedModel) setDefaultModelIdState(storedModel);
-      setConversations(storedConvos);
+      const validIds = new Set(GROQ_MODELS.map((m) => m.id));
+      const safeDefault =
+        storedModel && validIds.has(storedModel) ? storedModel : DEFAULT_MODEL_ID;
+      setDefaultModelIdState(safeDefault);
+
+      // Migrate any conversations using deprecated/removed models
+      const migrated = storedConvos.map((c) =>
+        validIds.has(c.modelId) ? c : { ...c, modelId: safeDefault },
+      );
+      setConversations(migrated);
 
       if (storedCurrent && storedConvos.some((c) => c.id === storedCurrent)) {
         setCurrentConversationId(storedCurrent);
@@ -144,10 +152,22 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     await removeKey(STORAGE_KEYS.apiKey);
   }, []);
 
-  const setDefaultModelId = useCallback(async (id: string) => {
-    setDefaultModelIdState(id);
-    await saveString(STORAGE_KEYS.defaultModel, id);
-  }, []);
+  const setDefaultModelId = useCallback(
+    async (id: string) => {
+      setDefaultModelIdState(id);
+      await saveString(STORAGE_KEYS.defaultModel, id);
+      // Also apply to the active conversation so the change is immediate
+      const activeId = currentConversationId;
+      if (activeId) {
+        setConversations((prev) =>
+          prev.map((c) =>
+            c.id === activeId ? { ...c, modelId: id, updatedAt: Date.now() } : c,
+          ),
+        );
+      }
+    },
+    [currentConversationId],
+  );
 
   const newConversation = useCallback(
     (modelId?: string) => {

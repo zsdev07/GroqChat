@@ -9,6 +9,7 @@ import {
   View,
 } from "react-native";
 
+import MarkdownText from "@/components/MarkdownText";
 import type { ChatMessage } from "@/contexts/AppContext";
 import { useColors } from "@/hooks/useColors";
 import { getModelById } from "@/lib/models";
@@ -104,18 +105,12 @@ function MessageRow({ message, isStreaming, onLongPress }: Props) {
               ))}
             </View>
           ) : (
-            <Text
-              style={[
-                styles.assistantText,
-                { color: colors.assistantBubbleText },
-              ]}
-              selectable
-            >
-              {message.content}
+            <View>
+              <MarkdownText content={message.content} />
               {isStreaming ? (
-                <Text style={{ color: colors.primary }}> ▍</Text>
+                <Text style={[styles.cursor, { color: colors.primary }]}>▍</Text>
               ) : null}
-            </Text>
+            </View>
           )}
         </Pressable>
       </View>
@@ -171,6 +166,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 24,
     fontFamily: "Inter_400Regular",
+  },
+  cursor: {
+    fontSize: 16,
+    lineHeight: 24,
+    fontFamily: "Inter_500Medium",
+    marginTop: -4,
   },
   thinkingDots: {
     flexDirection: "row",
