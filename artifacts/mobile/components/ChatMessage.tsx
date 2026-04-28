@@ -137,12 +137,67 @@ function MessageRow({
               },
             ]}
           >
-            <Text
-              style={[styles.userText, { color: colors.userBubbleText }]}
-              selectable
-            >
-              {message.content}
-            </Text>
+            {message.attachment ? (
+              <View
+                style={[
+                  styles.attachmentBadge,
+                  {
+                    backgroundColor: colors.background,
+                    borderColor: colors.border,
+                  },
+                ]}
+              >
+                <View
+                  style={[
+                    styles.attachmentBadgeIcon,
+                    { backgroundColor: `${colors.primary}22` },
+                  ]}
+                >
+                  <Feather
+                    name="file-text"
+                    size={14}
+                    color={colors.primary}
+                  />
+                </View>
+                <View style={{ flexShrink: 1, minWidth: 0 }}>
+                  <Text
+                    numberOfLines={1}
+                    style={[
+                      styles.attachmentBadgeName,
+                      { color: colors.foreground },
+                    ]}
+                  >
+                    {message.attachment.name}
+                  </Text>
+                  <Text
+                    numberOfLines={1}
+                    style={[
+                      styles.attachmentBadgeSub,
+                      { color: colors.mutedForeground },
+                    ]}
+                  >
+                    {message.attachment.tokenEstimate < 1000
+                      ? `${message.attachment.tokenEstimate} tok`
+                      : `${(message.attachment.tokenEstimate / 1000).toFixed(1)}k tok`}
+                    {" · "}
+                    {message.attachment.lineCount} line
+                    {message.attachment.lineCount === 1 ? "" : "s"}
+                  </Text>
+                </View>
+              </View>
+            ) : null}
+            {message.content ? (
+              <Text
+                style={[
+                  styles.userText,
+                  { color: colors.userBubbleText },
+                  message.attachment ? { marginTop: 8 } : null,
+                ]}
+                selectable
+              >
+                {message.content}
+              </Text>
+            ) : null}
           </Pressable>
 
           {showUserActions ? (
@@ -417,6 +472,33 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     borderRadius: 6,
+  },
+  attachmentBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+    borderRadius: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    minWidth: 0,
+    maxWidth: 240,
+  },
+  attachmentBadgeIcon: {
+    width: 26,
+    height: 26,
+    borderRadius: 7,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  attachmentBadgeName: {
+    fontSize: 12.5,
+    fontFamily: "Inter_600SemiBold",
+  },
+  attachmentBadgeSub: {
+    fontSize: 11,
+    fontFamily: "Inter_400Regular",
+    marginTop: 1,
   },
   statsWrap: {
     flex: 1,

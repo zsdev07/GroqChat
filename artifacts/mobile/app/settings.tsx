@@ -462,13 +462,7 @@ export default function SettingsScreen() {
                   false: colors.border,
                   true: colors.primary,
                 }}
-                thumbColor={
-                  Platform.OS === "android"
-                    ? tokenStatsEnabled
-                      ? colors.primaryForeground
-                      : colors.card
-                    : undefined
-                }
+                thumbColor="#ffffff"
                 ios_backgroundColor={colors.border}
               />
             </View>

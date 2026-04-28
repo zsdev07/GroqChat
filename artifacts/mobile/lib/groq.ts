@@ -1,6 +1,21 @@
 import { fetch } from "expo/fetch";
 
 import type { ChatMessage } from "@/contexts/AppContext";
+import { buildAttachmentBlock } from "@/lib/fileExtractor";
+
+function expandAttachment(msg: ChatMessage): string {
+  if (!msg.attachment) return msg.content;
+  const block = buildAttachmentBlock({
+    name: msg.attachment.name,
+    language: msg.attachment.language,
+    lineCount: msg.attachment.lineCount,
+    tokenEstimate: msg.attachment.tokenEstimate,
+    content: msg.attachment.content,
+    size: msg.attachment.content.length,
+  });
+  if (!msg.content) return block;
+  return `${block}\n\n${msg.content}`;
+}
 
 const GROQ_ENDPOINT = "https://api.groq.com/openai/v1/chat/completions";
 
@@ -32,8 +47,8 @@ export async function streamGroq({
     stream: true,
     stream_options: { include_usage: true },
     messages: messages
-      .filter((m) => m.role !== "system" || m.content)
-      .map((m) => ({ role: m.role, content: m.content })),
+      .filter((m) => m.role !== "system" || m.content || m.attachment)
+      .map((m) => ({ role: m.role, content: expandAttachment(m) })),
   };
 
   const response = await fetch(GROQ_ENDPOINT, {

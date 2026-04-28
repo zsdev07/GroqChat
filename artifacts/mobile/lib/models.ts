@@ -33,6 +33,7 @@ export const GROQ_MODELS: GroqModel[] = [
     name: "GPT-OSS 20B",
     description: "OpenAI open-weight balanced model",
     contextWindow: 128000,
+    badge: "Efficient",
   },
 ];
 

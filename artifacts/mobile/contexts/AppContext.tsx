@@ -28,6 +28,14 @@ export interface MessageStats {
   durationMs?: number;
 }
 
+export interface MessageAttachment {
+  name: string;
+  language: string;
+  lineCount: number;
+  tokenEstimate: number;
+  content: string;
+}
+
 export interface ChatMessage {
   id: string;
   role: MessageRole;
@@ -35,6 +43,7 @@ export interface ChatMessage {
   modelId?: string;
   createdAt: number;
   stats?: MessageStats;
+  attachment?: MessageAttachment;
 }
 
 export interface Conversation {

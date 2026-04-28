@@ -29,6 +29,7 @@ import {
   useApp,
 } from "@/contexts/AppContext";
 import { useColors } from "@/hooks/useColors";
+import type { ExtractedFile } from "@/lib/fileExtractor";
 import { streamGroq } from "@/lib/groq";
 import { generateId } from "@/lib/ids";
 
@@ -188,7 +189,7 @@ export default function ChatScreen() {
   );
 
   const handleSend = useCallback(
-    async (text: string) => {
+    async (text: string, attachment: ExtractedFile | null) => {
       if (!conversationId) return;
       if (!apiKey) {
         router.push("/settings");
@@ -200,6 +201,15 @@ export default function ChatScreen() {
         role: "user",
         content: text,
         createdAt: Date.now(),
+        attachment: attachment
+          ? {
+              name: attachment.name,
+              language: attachment.language,
+              lineCount: attachment.lineCount,
+              tokenEstimate: attachment.tokenEstimate,
+              content: attachment.content,
+            }
+          : undefined,
       };
       const assistantMessage: ChatMessage = {
         id: generateId("msg"),
@@ -402,11 +412,12 @@ export default function ChatScreen() {
             ref={inputRef}
             modelId={modelId}
             onPickModel={handlePickModel}
-            onSend={(t) => {
-              void handleSend(t);
+            onSend={(t, file) => {
+              void handleSend(t, file);
               inputRef.current?.focus();
             }}
             onStop={handleStop}
+            onAttachmentError={(msg) => setErrorBanner(msg)}
             isStreaming={isStreaming}
             disabled={!ready}
           />
