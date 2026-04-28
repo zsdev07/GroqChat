@@ -1,0 +1,96 @@
+import { fetch } from "expo/fetch";
+
+import type { ChatMessage } from "@/contexts/AppContext";
+
+const GROQ_ENDPOINT = "https://api.groq.com/openai/v1/chat/completions";
+
+export interface StreamArgs {
+  apiKey: string;
+  model: string;
+  messages: ChatMessage[];
+  signal?: AbortSignal;
+  onChunk: (chunk: string) => void;
+}
+
+export async function streamGroq({
+  apiKey,
+  model,
+  messages,
+  signal,
+  onChunk,
+}: StreamArgs): Promise<void> {
+  const payload = {
+    model,
+    stream: true,
+    messages: messages
+      .filter((m) => m.role !== "system" || m.content)
+      .map((m) => ({ role: m.role, content: m.content })),
+  };
+
+  const response = await fetch(GROQ_ENDPOINT, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+      Accept: "text/event-stream",
+    },
+    body: JSON.stringify(payload),
+    signal,
+  });
+
+  if (!response.ok) {
+    const text = await response.text().catch(() => "");
+    let message = `Groq request failed (${response.status})`;
+    try {
+      const parsed = JSON.parse(text);
+      if (parsed?.error?.message) message = parsed.error.message;
+    } catch {
+      if (text) message = text;
+    }
+    throw new Error(message);
+  }
+
+  const reader = response.body?.getReader();
+  if (!reader) throw new Error("No response body from Groq");
+
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() ?? "";
+
+    for (const rawLine of lines) {
+      const line = rawLine.trim();
+      if (!line.startsWith("data:")) continue;
+      const data = line.slice(5).trim();
+      if (!data) continue;
+      if (data === "[DONE]") return;
+
+      try {
+        const parsed = JSON.parse(data);
+        const delta = parsed?.choices?.[0]?.delta?.content;
+        if (typeof delta === "string" && delta.length > 0) {
+          onChunk(delta);
+        }
+      } catch {
+        // ignore malformed chunks
+      }
+    }
+  }
+}
+
+export async function validateGroqKey(apiKey: string): Promise<boolean> {
+  try {
+    const response = await fetch("https://api.groq.com/openai/v1/models", {
+      headers: { Authorization: `Bearer ${apiKey}` },
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
